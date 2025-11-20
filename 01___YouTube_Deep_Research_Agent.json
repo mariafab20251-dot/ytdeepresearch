@@ -1,0 +1,469 @@
+{
+  "name": "01 | YouTube Deep Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -440,
+        -180
+      ],
+      "id": "dab1d6c7-fe19-43d0-9cbd-20fd6a041daf",
+      "name": "When chat message received",
+      "webhookId": "899c047f-88e7-402f-8f9a-101f85d072b6"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "AIzaSyCcg3K2dvQFpTwNlj8_3DyHrHnqEwDdSzA"
+            },
+            {
+              "name": "part",
+              "value": "contentDetails, snippet, statistics"
+            },
+            {
+              "name": "id",
+              "value": "={{ $json.id.videoId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -180
+      ],
+      "id": "557f8ebf-c392-426c-b58a-cc30db5c3bde",
+      "name": "Fetch Video Information"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract data for calculations\nconst views =\n  Number($json.items[0].statistics.viewCount || 0);\nconst likes =\n  Number($json.items[0].statistics.likeCount || 0);\nconst comments =\n  Number($json.items[0].statistics.commentCount || 0);\n\n// Calculate ratios\nconst likeRatio = views > 0 ? (likes / views) * 100 : 0;\nconst commentRatio = views > 0 ? (comments / views) * 100 : 0;\n\n// Extract title and video ID\nconst title = $json.items[0].snippet.title || '';\nconst videoId = $json.items[0].id || '';\nconst youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;\n\n// Return only the essential data\nreturn {\n  title,\n  youtubeUrl,\n  likeRatio,\n  commentRatio,\n  views\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -180
+      ],
+      "id": "339a443f-30bf-436a-819c-90ade21aba3d",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "limit": 50,
+        "filters": {
+          "publishedAfter": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}",
+          "q": "={{ $json.topic }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        -180
+      ],
+      "id": "34343dc5-ef7d-4809-a0f8-a36a15db6eea",
+      "name": "YouTube Videos Information",
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "JJFLk6nUGkdOSYOS",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8909e177-ed05-4dbf-aea4-b7c4d4a6401e",
+              "leftValue": "={{ $json.likeRatio }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "ac0bfd3e-6725-403f-bd20-f7b3add2b0a1",
+              "leftValue": "={{ $json.commentRatio }}",
+              "rightValue": 0.2,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "4f6e238b-7d3e-4df7-bd42-1d30559c3bfc",
+              "leftValue": "={{ $json.views }}",
+              "rightValue": 1000,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        -180
+      ],
+      "id": "75318dd1-9b64-4c0b-b1f7-b25283988089",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        40
+      ],
+      "id": "50676ee7-6e49-4f21-bfa0-7e73f395bcab",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.title }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "HumanMessagePromptTemplate",
+              "message": "Your job is to verify if the title is in English or not.  Respond with 1 word answers.   \"Yes\" for titles in English.   \"No\" for titles not in English."
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        -220,
+        40
+      ],
+      "id": "7517f897-c0b7-4b9c-b1d1-864f01a2544d",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-chat",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        220
+      ],
+      "id": "d0fb5b02-2352-4c1d-b6fa-644d68d7f778",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "a1PAE54E7M2zE2dW",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1bb746b1-7213-4c97-bf9a-b69cd3ad6e2c",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "Yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        40
+      ],
+      "id": "17e95146-df19-4b8f-82e4-21c5f5048221",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appZs62bhTeafVJFh",
+          "mode": "list",
+          "cachedResultName": "YTAgent",
+          "cachedResultUrl": "https://airtable.com/appZs62bhTeafVJFh"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblSzlIqpso2DocEp",
+          "mode": "list",
+          "cachedResultName": "Table 1",
+          "cachedResultUrl": "https://airtable.com/appZs62bhTeafVJFh/tblSzlIqpso2DocEp"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Comment Ratio": "={{ $('Remove Duplicates').item.json.commentRatio }}",
+            "Like Ratio": "={{ $('Remove Duplicates').item.json.likeRatio }}",
+            "Video Name": "={{ $('Remove Duplicates').item.json.title }}",
+            "Video URL": "={{ $('Remove Duplicates').item.json.youtubeUrl }}",
+            "View": "={{ $('Remove Duplicates').item.json.views }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Video Name",
+              "displayName": "Video Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Like Ratio",
+              "displayName": "Like Ratio",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Comment Ratio",
+              "displayName": "Comment Ratio",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "View",
+              "displayName": "View",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Video URL",
+              "displayName": "Video URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        360,
+        40
+      ],
+      "id": "6348d433-0a8f-4a93-8489-d528d7f7d03b",
+      "name": "Airtable",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "XKPxGD74NS2HRbNb",
+          "name": "Airtable Personal Access Token account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "When chat message received": [
+      {
+        "json": {
+          "topic": "Best SaaS Business"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "YouTube Videos Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Video Information": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube Videos Information": {
+      "main": [
+        [
+          {
+            "node": "Fetch Video Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a51b4f54-0c33-4ce4-bb8f-06fb976b9b7d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "32fdab2829dca27b8592d448f705b54fea5e086e57c20b1145da3ad543def8da"
+  },
+  "id": "LVQBhZKjtR5p6FTH",
+  "tags": [
+    {
+      "createdAt": "2025-05-01T10:57:49.143Z",
+      "updatedAt": "2025-05-01T10:57:49.143Z",
+      "id": "WhmYBBZ64u7vn2Md",
+      "name": "YouTube"
+    },
+    {
+      "createdAt": "2025-05-01T10:57:49.167Z",
+      "updatedAt": "2025-05-01T10:57:49.167Z",
+      "id": "pzFzCOMgJnJNNILN",
+      "name": "Research"
+    }
+  ]
+}
